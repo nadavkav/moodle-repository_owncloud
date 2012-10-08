@@ -16,10 +16,10 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * This plugin is used to access webdav files
+ * This plugin is used to access owncloud files
  *
  * @since 2.0
- * @package    repository_webdav
+ * @package    repository_owncloud
  * @copyright  2010 Dongsheng Cai {@link http://dongsheng.org}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -27,46 +27,83 @@ require_once($CFG->dirroot . '/repository/lib.php');
 require_once($CFG->libdir.'/webdavlib.php');
 
 /**
- * repository_webdav class
+ * repository_owncloud class
  *
  * @since 2.0
- * @package    repository_webdav
+ * @package    repository_owncloud
  * @copyright  2009 Dongsheng Cai {@link http://dongsheng.org}
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class repository_webdav extends repository {
+class repository_owncloud extends repository {
+    private $username;
+    private $password;
+
     public function __construct($repositoryid, $context = SYSCONTEXTID, $options = array()) {
         parent::__construct($repositoryid, $context, $options);
-        // set up webdav client
-        if (empty($this->options['webdav_server'])) {
+        // set up owncloud client
+        if (empty($this->options['owncloud_server'])) {
             return;
         }
-        if ($this->options['webdav_auth'] == 'none') {
-            $this->options['webdav_auth'] = false;
+        if ($this->options['owncloud_auth'] == 'none') {
+            $this->options['owncloud_auth'] = false;
         }
-        $this->dav = new webdav_client($this->options['webdav_server'], $this->options['webdav_user'], $this->options['webdav_password'], $this->options['webdav_auth']);
-        if (empty($this->options['webdav_type'])) {
+        if (empty($this->options['owncloud_type'])) {
             $this->webdav_type = '';
         } else {
             $this->webdav_type = 'ssl://';
         }
-        if (empty($this->options['webdav_port'])) {
-            if (empty($this->webdav_type)) {
-                $this->dav->port = 80;
-            } else {
-                $this->dav->port = 443;
-            }
+        if (empty($this->options['owncloud_port'])) {
             $port = '';
+            if (empty($this->webdav_type)) {
+                $this->webdav_port = 80;
+            } else {
+                $this->webdav_port = 443;
+                $port = ':443';
+            }
         } else {
-            $this->dav->port = $this->options['webdav_port'];
-            $port = ':'.$this->options['webdav_port'];
+            $this->webdav_port = $this->options['owncloud_port'];
+            $port = ':' . $this->webdav_port;
         }
-        $this->webdav_host = $this->webdav_type.$this->options['webdav_server'].$port;
+        //$this->username = $this->options['owncloud_username'];
+        //$this->password = $this->options['owncloud_password'];
+        $this->username = optional_param('owncloud_user', '', PARAM_RAW);
+        $this->password = optional_param('owncloud_pass', '', PARAM_RAW);
+
+        $this->webdav_host = $this->webdav_type.$this->options['owncloud_server'].$port;
+        $this->dav = new webdav_client($this->options['owncloud_server'], $this->options['owncloud_username'],
+                $this->options['owncloud_password'], $this->options['owncloud_auth'], $this->webdav_type);
+        $this->dav->port = $this->webdav_port;
         $this->dav->debug = false;
     }
     public function check_login() {
-        return true;
+        return !empty($this->username);
     }
+    /**
+     * Define a search form
+     *
+     * @return array
+     */
+    public function print_login(){
+        global $CFG;
+
+        $ret = array();
+        $username = new stdClass();
+        $username->type = 'text';
+        $username->id   = 'owncloud_username';
+        $username->name = 'owncloud_user';
+        $username->label = get_string('username').': ';
+        $password = new stdClass();
+        $password->type = 'text';
+        $password->id   = 'owncloud_password';
+        $password->name = 'owncloud_pass';
+        $password->label = get_string('password').': ';
+
+        $ret['login'] = array($username, $password);
+        $ret['login_btn_label'] = get_string('login');
+        $ret['login_btn_action'] = 'login';
+        return $ret;
+    }
+
     public function get_file($url, $title = '') {
         global $CFG;
         $url = urldecode($url);
@@ -75,8 +112,8 @@ class repository_webdav extends repository {
         if (!$this->dav->open()) {
             return false;
         }
-        $webdavpath = rtrim('/'.ltrim($this->options['webdav_path'], '/ '), '/ '); // without slash in the end
-        $this->dav->get($webdavpath. $url, $buffer);
+        $owncloudpath = rtrim('/'.ltrim($this->options['owncloud_path'], '/ '), '/ '); // without slash in the end
+        $this->dav->get($owncloudpath. $url, $buffer);
         $fp = fopen($path, 'wb');
         fwrite($fp, $buffer);
         return array('path'=>$path);
@@ -91,12 +128,16 @@ class repository_webdav extends repository {
         $ret['dynload'] = true;
         $ret['nosearch'] = true;
         $ret['nologin'] = true;
-        $ret['path'] = array(array('name'=>get_string('webdav', 'repository_webdav'), 'path'=>''));
+        $ret['path'] = array(array('name'=>get_string('owncloud', 'repository_owncloud'), 'path'=>''));
         $ret['list'] = array();
+        if (empty($this->dav->user)) {
+            $this->dav->user   = optional_param('owncloud_user', '', PARAM_RAW);
+            $this->dav->pass   = optional_param('owncloud_pass', '', PARAM_RAW);
+        }
         if (!$this->dav->open()) {
             return $ret;
         }
-        $webdavpath = rtrim('/'.ltrim($this->options['webdav_path'], '/ '), '/ '); // without slash in the end
+        $owncloudpath = rtrim('/'.ltrim($this->options['owncloud_path'], '/ '), '/ '); // without slash in the end
         if (empty($path) || $path =='/') {
             $path = '/';
         } else {
@@ -108,7 +149,7 @@ class repository_webdav extends repository {
                 );
             }
         }
-        $dir = $this->dav->ls($webdavpath. urldecode($path));
+        $dir = $this->dav->ls($owncloudpath. urldecode($path));
         if (!is_array($dir)) {
             return $ret;
         }
@@ -120,13 +161,16 @@ class repository_webdav extends repository {
             } else {
                 $v['lastmodified'] = null;
             }
-            $v['href'] = substr($v['href'], strlen(urlencode($webdavpath)));
-            $title = urldecode(substr($v['href'], strlen($path)));
+
+            // Extracting object title from absolute path
+            $v['href'] = substr(urldecode($v['href']), strlen($owncloudpath));
+            $title = substr($v['href'], strlen($path));
+
             if (!empty($v['resourcetype']) && $v['resourcetype'] == 'collection') {
                 // a folder
                 if ($path != $v['href']) {
-                    $folders[] = array(
-                        'title'=>$title,
+                    $folders[strtoupper($title)] = array(
+                        'title'=>rtrim($title, '/'),
                         'thumbnail'=>$OUTPUT->pix_url(file_folder_icon(90))->out(false),
                         'children'=>array(),
                         'datemodified'=>$v['lastmodified'],
@@ -136,7 +180,7 @@ class repository_webdav extends repository {
             }else{
                 // a file
                 $size = !empty($v['getcontentlength'])? $v['getcontentlength']:'';
-                $files[] = array(
+                $files[strtoupper($title)] = array(
                     'title'=>$title,
                     'thumbnail' => $OUTPUT->pix_url(file_extension_icon($title, 90))->out(false),
                     'size'=>$size,
@@ -145,35 +189,37 @@ class repository_webdav extends repository {
                 );
             }
         }
+        ksort($files);
+        ksort($folders);
         $ret['list'] = array_merge($folders, $files);
         return $ret;
     }
     public static function get_instance_option_names() {
-        return array('webdav_type', 'webdav_server', 'webdav_port', 'webdav_path', 'webdav_user', 'webdav_password', 'webdav_auth');
+        return array('owncloud_type', 'owncloud_server', 'owncloud_port', 'owncloud_path', 'owncloud_username', 'owncloud_password', 'owncloud_auth');
     }
 
     public static function instance_config_form($mform) {
-        $choices = array(0 => get_string('http', 'repository_webdav'), 1 => get_string('https', 'repository_webdav'));
-        $mform->addElement('select', 'webdav_type', get_string('webdav_type', 'repository_webdav'), $choices);
-        $mform->addRule('webdav_type', get_string('required'), 'required', null, 'client');
+        $choices = array(0 => get_string('http', 'repository_owncloud'), 1 => get_string('https', 'repository_owncloud'));
+        $mform->addElement('select', 'owncloud_type', get_string('owncloud_type', 'repository_owncloud'), $choices);
+        $mform->addRule('owncloud_type', get_string('required'), 'required', null, 'client');
 
-        $mform->addElement('text', 'webdav_server', get_string('webdav_server', 'repository_webdav'), array('size' => '40'));
-        $mform->addRule('webdav_server', get_string('required'), 'required', null, 'client');
+        $mform->addElement('text', 'owncloud_server', get_string('owncloud_server', 'repository_owncloud'), array('size' => '40'));
+        $mform->addRule('owncloud_server', get_string('required'), 'required', null, 'client');
 
-        $mform->addElement('text', 'webdav_path', get_string('webdav_path', 'repository_webdav'), array('size' => '40'));
-        $mform->addRule('webdav_path', get_string('required'), 'required', null, 'client');
+        $mform->addElement('text', 'owncloud_path', get_string('owncloud_path', 'repository_owncloud'), array('size' => '40'));
+        $mform->addRule('owncloud_path', get_string('required'), 'required', null, 'client');
 
         $choices = array();
         $choices['none'] = get_string('none');
-        $choices['basic'] = get_string('webdavbasicauth', 'repository_webdav');
-        //$choices['digest'] = get_string('webdavdigestauth', 'repository_webdav');
-        $mform->addElement('select', 'webdav_auth', get_string('authentication', 'admin'), $choices);
-        $mform->addRule('webdav_auth', get_string('required'), 'required', null, 'client');
+        $choices['basic'] = get_string('owncloudbasicauth', 'repository_owncloud');
+        $choices['digest'] = get_string('ownclouddigestauth', 'repository_owncloud');
+        $mform->addElement('select', 'owncloud_auth', get_string('authentication', 'admin'), $choices);
+        $mform->addRule('owncloud_auth', get_string('required'), 'required', null, 'client');
 
 
-        $mform->addElement('text', 'webdav_port', get_string('webdav_port', 'repository_webdav'), array('size' => '40'));
-        $mform->addElement('text', 'webdav_user', get_string('webdav_user', 'repository_webdav'), array('size' => '40'));
-        $mform->addElement('text', 'webdav_password', get_string('webdav_password', 'repository_webdav'), array('size' => '40'));
+        $mform->addElement('text', 'owncloud_port', get_string('owncloud_port', 'repository_owncloud'), array('size' => '40'));
+        $mform->addElement('text', 'owncloud_username', get_string('owncloud_username', 'repository_owncloud'), array('size' => '40'));
+        $mform->addElement('text', 'owncloud_password', get_string('owncloud_password', 'repository_owncloud'), array('size' => '40'));
     }
     public function supported_returntypes() {
         return (FILE_INTERNAL | FILE_EXTERNAL);
