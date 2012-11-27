@@ -69,6 +69,9 @@ class repository_owncloud extends repository {
         $this->username = optional_param('owncloud_user', '', PARAM_RAW);
         $this->password = optional_param('owncloud_pass', '', PARAM_RAW);
 
+        $this->options['owncloud_username'] = $this->username;
+        $this->options['owncloud_password'] = $this->password;
+
         $this->webdav_host = $this->webdav_type.$this->options['owncloud_server'].$port;
         $this->dav = new webdav_client($this->options['owncloud_server'], $this->options['owncloud_username'],
                 $this->options['owncloud_password'], $this->options['owncloud_auth'], $this->webdav_type);
@@ -93,7 +96,7 @@ class repository_owncloud extends repository {
         $username->name = 'owncloud_user';
         $username->label = get_string('username').': ';
         $password = new stdClass();
-        $password->type = 'text';
+        $password->type = 'password';
         $password->id   = 'owncloud_password';
         $password->name = 'owncloud_pass';
         $password->label = get_string('password').': ';
